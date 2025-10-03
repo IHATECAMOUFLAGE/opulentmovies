@@ -33,9 +33,17 @@ export default async function handler(req, res) {
       return;
     }
 
-    const UPSTREAM_BASE = process.env.UPSTREAM_BASE || "https://example.com";
-    const incomingPath = (req.url || "").replace(/^\/api\/proxy/, "") || "/";
-    const upstreamUrl = new URL(incomingPath, UPSTREAM_BASE);
+    let incomingPath = (req.url || "").replace(/^\/api\/proxy\/?/, "");
+    if (!incomingPath) incomingPath = "/";
+
+    let upstreamUrl;
+    try {
+      upstreamUrl = new URL(incomingPath);
+    } catch {
+      const UPSTREAM_BASE = process.env.UPSTREAM_BASE || "https://example.com";
+      upstreamUrl = new URL(incomingPath, UPSTREAM_BASE);
+    }
+
     const isHttps = upstreamUrl.protocol === "https:";
     const client = isHttps ? https : http;
     const options = { method: req.method, headers: sanitizeHeaders(req.headers) };
@@ -50,7 +58,7 @@ export default async function handler(req, res) {
       upstreamRes.pipe(res);
     });
 
-    upstreamReq.on("error", (err) => {
+    upstreamReq.on("error", () => {
       if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
       res.end("Bad Gateway");
     });
