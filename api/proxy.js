@@ -7,7 +7,8 @@ export const config = { api: { bodyParser: false } };
 function sanitizeHeaders(headers) {
   const banned = [
     "connection", "upgrade", "keep-alive", "proxy-authenticate", "proxy-authorization",
-    "te", "trailer", "transfer-encoding", "upgrade-insecure-requests"
+    "te", "trailer", "transfer-encoding", "upgrade-insecure-requests",
+    "x-frame-options", "content-security-policy"
   ];
   const h = {};
   for (const [k, v] of Object.entries(headers || {})) {
@@ -54,8 +55,20 @@ export default async function handler(req, res) {
       respHeaders["Access-Control-Allow-Origin"] = process.env.CORS_ORIGIN || "*";
       respHeaders["Access-Control-Allow-Methods"] = "GET,HEAD,OPTIONS";
       respHeaders["Access-Control-Allow-Headers"] = "Range,Content-Type,x-proxy-key";
-      res.writeHead(upstreamRes.statusCode || 200, respHeaders);
-      upstreamRes.pipe(res);
+
+      if ((respHeaders["content-type"] || "").includes("text/html")) {
+        let html = "";
+        upstreamRes.on("data", chunk => html += chunk.toString());
+        upstreamRes.on("end", () => {
+          // Strip scripts that redirect or break embedding
+          html = html.replace(/<script[^>]*>.*?<\/script>/gs, "");
+          res.writeHead(200, respHeaders);
+          res.end(html);
+        });
+      } else {
+        res.writeHead(upstreamRes.statusCode || 200, respHeaders);
+        upstreamRes.pipe(res);
+      }
     });
 
     upstreamReq.on("error", () => {
