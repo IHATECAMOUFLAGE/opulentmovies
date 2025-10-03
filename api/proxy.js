@@ -60,7 +60,6 @@ export default async function handler(req, res) {
         let html = "";
         upstreamRes.on("data", chunk => html += chunk.toString());
         upstreamRes.on("end", () => {
-          // Strip scripts that redirect or break embedding
           html = html.replace(/<script[^>]*>.*?<\/script>/gs, "");
           res.writeHead(200, respHeaders);
           res.end(html);
