@@ -1,0 +1,10 @@
+{
+  "name": "vercel-video-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node serverless-placeholder.js"
+  },
+  "dependencies": {}
+}

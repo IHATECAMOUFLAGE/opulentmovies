@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "functions": {
+    "api/*.js": {
+      "memory": 512,
+      "maxDuration": 30
+    },
+    "api/*.py": {
+      "memory": 512,
+      "maxDuration": 30
+    }
+  },
+  "routes": [
+    { "src": "/api/proxy(.*)", "dest": "/api/proxy.js" },
+    { "src": "/api/meta", "dest": "/api/meta.py" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
