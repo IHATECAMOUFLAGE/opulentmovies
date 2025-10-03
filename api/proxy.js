@@ -1,23 +1,6 @@
-import http from "http";
-import https from "https";
-import { URL } from "url";
+import axios from "axios";
 
 export const config = { api: { bodyParser: false } };
-
-function sanitizeHeaders(headers) {
-  const banned = [
-    "connection", "upgrade", "keep-alive", "proxy-authenticate", "proxy-authorization",
-    "te", "trailer", "transfer-encoding", "upgrade-insecure-requests",
-    "x-frame-options", "content-security-policy"
-  ];
-  const h = {};
-  for (const [k, v] of Object.entries(headers || {})) {
-    if (!banned.includes(k.toLowerCase())) {
-      h[k] = v;
-    }
-  }
-  return h;
-}
 
 function checkAuth(req) {
   const apiKey = process.env.PROXY_API_KEY || "";
@@ -29,55 +12,53 @@ function checkAuth(req) {
 export default async function handler(req, res) {
   try {
     if (!checkAuth(req)) {
-      res.writeHead(401, { "content-type": "text/plain" });
-      res.end("Unauthorized");
+      res.status(401).send("Unauthorized");
       return;
     }
 
-    let incomingPath = (req.url || "").replace(/^\/api\/proxy\/?/, "");
-    if (!incomingPath) incomingPath = "/";
+    let urlPath = (req.url || "").replace(/^\/api\/proxy\/?/, "");
+    if (!urlPath) urlPath = "/";
 
-    let upstreamUrl;
+    let targetUrl;
     try {
-      upstreamUrl = new URL(incomingPath);
+      targetUrl = new URL(urlPath);
     } catch {
       const UPSTREAM_BASE = process.env.UPSTREAM_BASE || "https://example.com";
-      upstreamUrl = new URL(incomingPath, UPSTREAM_BASE);
+      targetUrl = new URL(urlPath, UPSTREAM_BASE);
     }
 
-    const isHttps = upstreamUrl.protocol === "https:";
-    const client = isHttps ? https : http;
-    const options = { method: req.method, headers: sanitizeHeaders(req.headers) };
-    options.headers["host"] = upstreamUrl.host;
+    const axiosOptions = {
+      method: req.method,
+      url: targetUrl.href,
+      responseType: "arraybuffer",
+      maxRedirects: 0,
+      headers: { ...req.headers, host: targetUrl.host },
+      validateStatus: (status) => true,
+    };
 
-    const upstreamReq = client.request(upstreamUrl, options, (upstreamRes) => {
-      const respHeaders = sanitizeHeaders(upstreamRes.headers);
-      respHeaders["Access-Control-Allow-Origin"] = process.env.CORS_ORIGIN || "*";
-      respHeaders["Access-Control-Allow-Methods"] = "GET,HEAD,OPTIONS";
-      respHeaders["Access-Control-Allow-Headers"] = "Range,Content-Type,x-proxy-key";
+    const upstreamRes = await axios(axiosOptions);
 
-      if ((respHeaders["content-type"] || "").includes("text/html")) {
-        let html = "";
-        upstreamRes.on("data", chunk => html += chunk.toString());
-        upstreamRes.on("end", () => {
-          html = html.replace(/<script[^>]*>.*?<\/script>/gs, "");
-          res.writeHead(200, respHeaders);
-          res.end(html);
-        });
-      } else {
-        res.writeHead(upstreamRes.statusCode || 200, respHeaders);
-        upstreamRes.pipe(res);
-      }
-    });
+    let headers = { ...upstreamRes.headers };
+    delete headers["x-frame-options"];
+    delete headers["content-security-policy"];
+    delete headers["location"];
 
-    upstreamReq.on("error", () => {
-      if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
-      res.end("Bad Gateway");
-    });
+    headers["Access-Control-Allow-Origin"] = "*";
+    headers["Access-Control-Allow-Methods"] = "GET,HEAD,OPTIONS";
+    headers["Access-Control-Allow-Headers"] = "Range,Content-Type,x-proxy-key";
 
-    req.pipe(upstreamReq);
-  } catch {
-    if (!res.headersSent) res.writeHead(500, { "content-type": "text/plain" });
-    res.end("Internal Server Error");
+    const contentType = headers["content-type"] || "";
+
+    if (contentType.includes("text/html")) {
+      let html = upstreamRes.data.toString("utf8");
+      html = html.replace(/<script[^>]*>.*?<\/script>/gs, "");
+      res.writeHead(200, headers);
+      res.end(html);
+    } else {
+      res.writeHead(upstreamRes.status, headers);
+      res.end(upstreamRes.data);
+    }
+  } catch (err) {
+    res.status(500).send("Internal Server Error");
   }
 }
