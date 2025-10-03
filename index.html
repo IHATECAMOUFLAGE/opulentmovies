@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proxied Video Viewer</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+  }
+  iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+</style>
+</head>
+<body>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('id') || '';
+  if (id) {
+    const iframe = document.createElement('iframe');
+    iframe.src = `/api/proxy/https://player.vidify.top/embed/movie/${encodeURIComponent(id)}`;
+    document.body.appendChild(iframe);
+  } else {
+    document.body.innerHTML = '<p style="text-align:center;margin-top:20px;">No ID specified in the URL.</p>';
+  }
+</script>
+</body>
+</html>
